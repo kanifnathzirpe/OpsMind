@@ -1,0 +1,249 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String         @id @default(cuid())
+  clerkId       String         @unique
+  email         String
+  name          String?
+  avatar        String?
+  role          String         @default("member") // admin, member, viewer
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  
+  auditLogs     AuditLog[]
+  notifications Notification[]
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  plan      String   @default("starter") // starter, growth, enterprise
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  users       User[]
+  merchants   Merchant[]
+  orders      Order[]
+  customers   Customer[]
+  fraudAlerts FraudAlert[]
+  aiInsights  AIInsight[]
+  auditLogs   AuditLog[]
+}
+
+model Merchant {
+  id             String       @id @default(cuid())
+  name           String
+  code           String       @unique
+  region         String
+  currency       String       @default("USD")
+  currencySymbol String       @default("$")
+  status         String       @default("active") // active, sandbox
+  multiplier     Float        @default(1.0)
+  
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  
+  orders         Order[]
+  transactions   Transaction[]
+  fraudAlerts    FraudAlert[]
+  recoveryEvents RecoveryEvent[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Customer {
+  id             String   @id @default(cuid())
+  name           String
+  email          String
+  avatar         String?
+  phone          String?
+  address        String?
+  
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  
+  orders         Order[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Order {
+  id               String   @id @default(cuid())
+  orderNumber      String   @unique
+  paymentIntentId  String   @unique
+  chargeId         String?
+  customerId       String
+  customerName     String
+  customerEmail    String
+  customerAvatar   String?
+  amount           Float
+  fee              Float
+  net              Float
+  currency         String   @default("USD")
+  status           String   @default("pending") // succeeded, pending, processing, failed, refunded
+  itemsCount       Int      @default(0)
+  country          String?
+  ipAddress        String?
+  
+  merchantId       String
+  merchant         Merchant @relation(fields: [merchantId], references: [id])
+  
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
+  
+  customer         Customer @relation(fields: [customerId], references: [id])
+  
+  transactions     Transaction[]
+  recoveryEvents   RecoveryEvent[]
+  fraudAlerts      FraudAlert[]
+  
+  paymentMethod    String? // JSON string: { brand, last4, expMonth, expYear, funding, issuer }
+  fraudRiskScore   Int      @default(0)
+  riskLevel        String?  // low, medium, high
+  riskExplanation  String?
+  riskFactors      String?  // JSON array string
+  timeline         String?  // JSON array string
+  stripeEvents     String?  // JSON array string
+  webhookLogs      String?  // JSON array string
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Transaction {
+  id               String   @id @default(cuid())
+  orderId          String
+  order            Order    @relation(fields: [orderId], references: [id])
+  
+  merchantId       String
+  merchant         Merchant @relation(fields: [merchantId], references: [id])
+  
+  type             String   // payment, refund, payout, fee
+  amount           Float
+  currency         String   @default("USD")
+  status           String   @default("pending") // pending, completed, failed
+  gateway          String?  // stripe, adyen, braintree
+  gatewayId        String?
+  
+  metadata         String? // JSON string
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model FraudAlert {
+  id             String   @id @default(cuid())
+  score          Int
+  level          String   // critical, high, medium
+  vector         String
+  customer       String
+  amount         Float
+  location       String?
+  ip             String?
+  bin            String?
+  status         String   @default("flagged") // blocked, flagged, quarantined
+  
+  merchantId     String
+  merchant       Merchant @relation(fields: [merchantId], references: [id])
+  
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  
+  orderId        String?
+  order          Order?    @relation(fields: [orderId], references: [id])
+  
+  explanation    String?
+  factors        String?  // JSON array string
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Notification {
+  id             String   @id @default(cuid())
+  title          String
+  description    String
+  category       String   // fraud, revenue, recovery, ai, system
+  read           Boolean  @default(false)
+  
+  userId         String
+  user           User     @relation(fields: [userId], references: [id])
+  
+  metadata       String? // JSON string
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AIInsight {
+  id             String   @id @default(cuid())
+  title          String
+  summary        String
+  impact         String
+  metric         String
+  category       String   // routing, recovery, fraud, treasury
+  confidence     Int
+  suggestedAction String
+  isApplied      Boolean  @default(false)
+  
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  
+  metadata       String? // JSON string
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model RecoveryEvent {
+  id             String   @id @default(cuid())
+  orderId        String
+  order          Order    @relation(fields: [orderId], references: [id])
+  
+  merchantId     String
+  merchant       Merchant @relation(fields: [merchantId], references: [id])
+  
+  attempt        Int
+  date           DateTime
+  method         String
+  result         String   // success, soft_fail, declined
+  amount         Float?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  action         String
+  entity         String
+  entityId       String?
+  changes        String? // JSON string
+  
+  userId         String
+  user           User     @relation(fields: [userId], references: [id])
+  
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  
+  ipAddress      String?
+  userAgent      String?
+  
+  createdAt DateTime @default(now())
+}
